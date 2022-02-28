@@ -1,29 +1,31 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
-
+import (
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+)
 
 type Coordinator struct {
 	// Your definitions here.
-
+	files []string
+	idx   int
+	done  bool
 }
 
 // Your code here -- RPC handlers for the worker to call.
 
-//
-// an example RPC handler.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
+func (c *Coordinator) GetWork(args *EmptyRequest, reply *FileNameReply) error {
+	if c.idx >= len(c.files) {
+		c.done = true
+		return nil
+	}
+	reply.File = c.files[c.idx]
+	c.idx++
 	return nil
 }
-
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -46,12 +48,7 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	ret := false
-
-	// Your code here.
-
-
-	return ret
+	return c.done
 }
 
 //
@@ -60,10 +57,9 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
+	c := Coordinator{files, 0, false}
 
 	// Your code here.
-
 
 	c.server()
 	return &c
