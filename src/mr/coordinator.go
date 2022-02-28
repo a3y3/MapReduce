@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
 )
 
 type Coordinator struct {
@@ -13,13 +14,16 @@ type Coordinator struct {
 	files []string
 	idx   int
 	done  bool
+	mutex sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
 
 func (c *Coordinator) GetWork(args *EmptyRequest, reply *FileNameReply) error {
 	if c.idx >= len(c.files) {
+		c.mutex.Lock()
 		c.done = true
+		c.mutex.Unlock()
 		return nil
 	}
 	reply.File = c.files[c.idx]
@@ -48,7 +52,11 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	return c.done
+	retval := false
+	c.mutex.Lock()
+	retval = c.done
+	c.mutex.Unlock()
+	return retval
 }
 
 //
@@ -57,7 +65,7 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{files, 0, false}
+	c := Coordinator{files: files}
 
 	// Your code here.
 
