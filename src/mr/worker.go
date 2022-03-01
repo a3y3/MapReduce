@@ -3,8 +3,10 @@ package mr
 import (
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
 	"log"
 	"net/rpc"
+	"os"
 )
 
 //
@@ -31,21 +33,90 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	fileNameReply := CallGetWork()
-	for fileNameReply.File != "" {
-		fmt.Printf("got file %v\n", fileNameReply.File)
-		fileNameReply = CallGetWork()
+	for {
+		mapTaskResponse := callGetWork()
+		fileName := mapTaskResponse.FileName
+		if fileName == "" {
+			return
+		}
+		fmt.Printf("got file %v\n", fileName)
+
+		content := getFileContent(fileName)
+		kva := mapf(fileName, content)
+		fmt.Printf("kva: %v", kva)
+		writeIntermediate(kva, mapTaskResponse)
+		callFinishedMap(mapTaskResponse)
+	}
+}
+
+func callFinishedMap(mapTaskResponse MapTaskResponse) {
+	mapTaskNumber, nReduce := mapTaskResponse.MapTaskNumber, mapTaskResponse.NReduce
+	var filesNames []string
+	for i := 0; i < nReduce; i++ {
+		filesNames = append(filesNames, fmt.Sprintf("mr-%v-%v", mapTaskNumber, i))
+	}
+
+	req := FinishedMapRequest{
+		FileNameList:  filesNames,
+		MapTaskNumber: mapTaskNumber,
+	}
+	reply := EmptyResponse{}
+
+	ok := call("Coordinator.FinishedMapTask", &req, &reply)
+	if !ok {
+		log.Fatalf("couldn't contact Coordinator.FinishedMapTask, exiting...")
 	}
 
 }
 
-func CallGetWork() FileNameReply {
+func writeIntermediate(kva []KeyValue, mapTaskResponse MapTaskResponse) {
+	nReduce := mapTaskResponse.NReduce
+	mapTaskNumber := mapTaskResponse.MapTaskNumber
+	var files []*os.File
+	for i := 0; i < nReduce; i++ {
+		f, err := os.OpenFile(fmt.Sprintf("tmp-mapoutput-%v-%v", mapTaskNumber, i), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		files = append(files, f)
+		if err != nil {
+			log.Fatalf("couldn't create temp file, exiting. mapTaskNumber: %v", mapTaskResponse.FileName)
+		}
+	}
+
+	defer os.RemoveAll("tmp-*")
+
+	for _, keyValue := range kva {
+		reduceTaskNumber := ihash(keyValue.Key) % nReduce
+		files[reduceTaskNumber].WriteString(fmt.Sprintf("%v %v\n", keyValue.Key, keyValue.Value))
+	}
+
+	for i := 0; i < nReduce; i++ {
+		os.Rename(fmt.Sprintf("tmp-mapoutput-%v-%v", mapTaskNumber, i), fmt.Sprintf("mapoutput-%v-%v", mapTaskNumber, i))
+	}
+}
+
+func getFileContent(fileName string) string {
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Fatalf("cannot open %v, exiting.", fileName)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read file %v, exiting.", fileName)
+	}
+	file.Close()
+	return string(content)
+}
+
+func callGetWork() MapTaskResponse {
 	req := EmptyRequest{}
-	reply := FileNameReply{}
+	reply := MapTaskResponse{}
 
 	ok := call("Coordinator.GetWork", &req, &reply)
 	if !ok {
-		fmt.Println(("Call to GetWork failed"))
+		fmt.Println("Call to GetWork failed, exiting gracefully ...")
 	}
 
 	return reply

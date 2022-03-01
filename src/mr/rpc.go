@@ -13,9 +13,18 @@ import (
 
 type EmptyRequest struct{}
 
-type FileNameReply struct {
-	File string
+type FinishedMapRequest struct {
+	FileNameList  []string
+	MapTaskNumber int
 }
+
+type MapTaskResponse struct {
+	FileName      string
+	MapTaskNumber int
+	NReduce       int
+}
+
+type EmptyResponse struct{}
 
 // Add your RPC definitions here.
 

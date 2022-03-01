@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -11,23 +12,32 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	files []string
-	idx   int
-	done  bool
-	mutex sync.Mutex
+	files         []string
+	idx           int
+	done          bool
+	mutex         sync.Mutex
+	mapTaskNumber int
+	nReduce       int
 }
 
-// Your code here -- RPC handlers for the worker to call.
-
-func (c *Coordinator) GetWork(args *EmptyRequest, reply *FileNameReply) error {
+func (c *Coordinator) GetWork(args *EmptyRequest, reply *MapTaskResponse) error {
 	if c.idx >= len(c.files) {
 		c.mutex.Lock()
 		c.done = true
 		c.mutex.Unlock()
 		return nil
 	}
-	reply.File = c.files[c.idx]
+	reply.FileName = c.files[c.idx]
+	reply.MapTaskNumber = c.mapTaskNumber
+	reply.NReduce = c.nReduce
 	c.idx++
+	c.mapTaskNumber++
+	return nil
+}
+
+func (c *Coordinator) FinishedMapTask(args *FinishedMapRequest, reply *EmptyResponse) error {
+	fmt.Printf("task %v files %v\n", args.MapTaskNumber, args.FileNameList)
+
 	return nil
 }
 
@@ -65,10 +75,7 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{files: files}
-
-	// Your code here.
-
+	c := Coordinator{files: files, nReduce: nReduce}
 	c.server()
 	return &c
 }
