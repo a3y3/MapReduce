@@ -12,32 +12,51 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	files         []string
-	idx           int
-	done          bool
-	mutex         sync.Mutex
-	mapTaskNumber int
-	nReduce       int
+	done    bool
+	mutex   sync.Mutex
+	mapTask MapTask
+	nReduce int
 }
 
-func (c *Coordinator) GetWork(args *EmptyRequest, reply *MapTaskResponse) error {
-	if c.idx >= len(c.files) {
-		c.mutex.Lock()
-		c.done = true
-		c.mutex.Unlock()
+type MapTask struct {
+	files      []string
+	taskNumber int
+	finished   bool
+}
+
+func addFileBackToList(fileName string) {
+	// timer.start(delay=10s)
+	// if fileName not in finished_files_set
+	// append(files, fileName)
+}
+
+func (c *Coordinator) GetMapTask(args *EmptyRequest, reply *MapTaskResponse) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	mapTask := c.mapTask
+	if len(mapTask.files) > 0 {
+		reply.MapTaskNumber = mapTask.taskNumber
+		reply.NReduce = c.nReduce
+		reply.operationName = processmaptask
+		reply.FileName = mapTask.files[len(mapTask.files)-1] // get the last element
+		mapTask.files = mapTask.files[:len(mapTask.files)-1] // remove it from the list
+		mapTask.taskNumber++
 		return nil
+	} else {
+		if mapTask.finished {
+			reply.operationName = exit
+		} else {
+			reply.operationName = wait
+		}
 	}
-	reply.FileName = c.files[c.idx]
-	reply.MapTaskNumber = c.mapTaskNumber
-	reply.NReduce = c.nReduce
-	c.idx++
-	c.mapTaskNumber++
 	return nil
 }
 
 func (c *Coordinator) FinishedMapTask(args *FinishedMapRequest, reply *EmptyResponse) error {
 	fmt.Printf("task %v files %v\n", args.MapTaskNumber, args.FileNameList)
-
+	// add fileName to finished_files_set
+	// if len(finished_files_set) == totalFiles, set finished to true
 	return nil
 }
 
@@ -62,9 +81,8 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
-	retval := false
 	c.mutex.Lock()
-	retval = c.done
+	retval := c.done
 	c.mutex.Unlock()
 	return retval
 }
@@ -75,7 +93,8 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{files: files, nReduce: nReduce}
+	mapTask := MapTask{files: files}
+	c := Coordinator{nReduce: nReduce, mapTask: mapTask}
 	c.server()
 	return &c
 }

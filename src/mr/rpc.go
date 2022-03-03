@@ -2,29 +2,41 @@ package mr
 
 //
 // RPC definitions.
-//
-// remember to capitalize all names.
-//
+// If type struct names end with either Request or Response, then:
+// 		Requests are always from workers -> coordinator.
+// 		Responses are always from coordinator -> worker.
+// These 2 rules also apply for all variables throughout. "response" is interchangable with "reply".
 
 import (
 	"os"
 	"strconv"
 )
 
+// ===== Responses =====
+type MapTaskResponse struct {
+	operationName MapOperation
+	FileName      string // the file to process
+	MapTaskNumber int    // guarantees that if 2 workers have the same map task, their intermediate files have different names
+	NReduce       int    //total number of reduce tasks, used by map tasks to calculate hash(key) % n
+}
+type EmptyResponse struct{}
+
+// ===== Requests =====
 type EmptyRequest struct{}
 
 type FinishedMapRequest struct {
-	FileNameList  []string
+	FileNameList  []string // list of "intermediate" maptask output files
 	MapTaskNumber int
 }
 
-type MapTaskResponse struct {
-	FileName      string
-	MapTaskNumber int
-	NReduce       int
-}
+// ===== Other type definitions =====
+type MapOperation int64
 
-type EmptyResponse struct{}
+const (
+	processmaptask MapOperation = iota
+	wait
+	exit
+)
 
 // Add your RPC definitions here.
 

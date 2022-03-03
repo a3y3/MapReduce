@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"time"
 )
 
 //
@@ -34,19 +35,29 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	for {
-		mapTaskResponse := callGetWork()
-		fileName := mapTaskResponse.FileName
-		if fileName == "" {
-			return
+		mapTaskResponse := callGetMapTask()
+		operation := mapTaskResponse.operationName
+		switch operation {
+		case processmaptask:
+			handleMapTask(mapTaskResponse, mapf)
+		case wait:
+			time.Sleep(time.Second)
+		case exit:
+			break
 		}
-		fmt.Printf("got file %v\n", fileName)
-
-		content := getFileContent(fileName)
-		kva := mapf(fileName, content)
-		fmt.Printf("kva: %v", kva)
-		writeIntermediate(kva, mapTaskResponse)
-		callFinishedMap(mapTaskResponse)
 	}
+
+}
+
+func handleMapTask(mapTaskResponse MapTaskResponse, mapf func(string, string) []KeyValue) {
+	fileName := mapTaskResponse.FileName
+	fmt.Printf("got file %v\n", fileName)
+
+	content := getFileContent(fileName)
+	kva := mapf(fileName, content)
+	fmt.Printf("kva: %v", kva)
+	writeIntermediate(kva, mapTaskResponse)
+	callFinishedMap(mapTaskResponse)
 }
 
 func callFinishedMap(mapTaskResponse MapTaskResponse) {
@@ -66,7 +77,6 @@ func callFinishedMap(mapTaskResponse MapTaskResponse) {
 	if !ok {
 		log.Fatalf("couldn't contact Coordinator.FinishedMapTask, exiting...")
 	}
-
 }
 
 func writeIntermediate(kva []KeyValue, mapTaskResponse MapTaskResponse) {
@@ -110,13 +120,13 @@ func getFileContent(fileName string) string {
 	return string(content)
 }
 
-func callGetWork() MapTaskResponse {
+func callGetMapTask() MapTaskResponse {
 	req := EmptyRequest{}
 	reply := MapTaskResponse{}
 
-	ok := call("Coordinator.GetWork", &req, &reply)
+	ok := call("Coordinator.GetMapTask", &req, &reply)
 	if !ok {
-		fmt.Println("Call to GetWork failed, exiting gracefully ...")
+		fmt.Println("Call to GetMapTask failed, exiting gracefully ...")
 	}
 
 	return reply
