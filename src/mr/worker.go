@@ -34,19 +34,22 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	for {
+	mapTaskDone := false
+	for mapTaskDone != true {
 		mapTaskResponse := callGetMapTask()
-		operation := mapTaskResponse.operationName
+		operation := mapTaskResponse.OperationName
+
 		switch operation {
 		case processmaptask:
 			handleMapTask(mapTaskResponse, mapf)
 		case wait:
 			time.Sleep(time.Second)
 		case exit:
-			break
+			fmt.Print("exiting!")
+			mapTaskDone = true
 		}
 	}
-
+	// reduce loop starts here
 }
 
 func handleMapTask(mapTaskResponse MapTaskResponse, mapf func(string, string) []KeyValue) {
@@ -62,6 +65,7 @@ func handleMapTask(mapTaskResponse MapTaskResponse, mapf func(string, string) []
 
 func callFinishedMap(mapTaskResponse MapTaskResponse) {
 	mapTaskNumber, nReduce := mapTaskResponse.MapTaskNumber, mapTaskResponse.NReduce
+	fileName := mapTaskResponse.FileName
 	var filesNames []string
 	for i := 0; i < nReduce; i++ {
 		filesNames = append(filesNames, fmt.Sprintf("mr-%v-%v", mapTaskNumber, i))
@@ -70,6 +74,7 @@ func callFinishedMap(mapTaskResponse MapTaskResponse) {
 	req := FinishedMapRequest{
 		FileNameList:  filesNames,
 		MapTaskNumber: mapTaskNumber,
+		FileName:      fileName,
 	}
 	reply := EmptyResponse{}
 

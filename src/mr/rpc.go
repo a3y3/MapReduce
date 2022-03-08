@@ -14,7 +14,7 @@ import (
 
 // ===== Responses =====
 type MapTaskResponse struct {
-	operationName MapOperation
+	OperationName MapOperation
 	FileName      string // the file to process
 	MapTaskNumber int    // guarantees that if 2 workers have the same map task, their intermediate files have different names
 	NReduce       int    //total number of reduce tasks, used by map tasks to calculate hash(key) % n
@@ -27,6 +27,7 @@ type EmptyRequest struct{}
 type FinishedMapRequest struct {
 	FileNameList  []string // list of "intermediate" maptask output files
 	MapTaskNumber int
+	FileName      string // the fileName that the map task finished processing
 }
 
 // ===== Other type definitions =====

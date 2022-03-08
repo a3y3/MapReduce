@@ -11,7 +11,6 @@ import (
 )
 
 type Coordinator struct {
-	// Your definitions here.
 	done    bool
 	mutex   sync.Mutex
 	mapTask MapTask
@@ -21,7 +20,9 @@ type Coordinator struct {
 type MapTask struct {
 	files      []string
 	taskNumber int
-	finished   bool
+	done       bool
+	totalFiles int
+	doneFiles  map[string]bool
 }
 
 func addFileBackToList(fileName string) {
@@ -30,33 +31,51 @@ func addFileBackToList(fileName string) {
 	// append(files, fileName)
 }
 
-func (c *Coordinator) GetMapTask(args *EmptyRequest, reply *MapTaskResponse) error {
+func pop(arr *[]string) string {
+	val := (*arr)[len(*arr)-1]
+	*arr = (*arr)[:len(*arr)-1]
+	return val
+}
+
+func (c *Coordinator) GetMapTask(args *EmptyRequest, response *MapTaskResponse) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	mapTask := c.mapTask
+	mapTask := &c.mapTask
 	if len(mapTask.files) > 0 {
-		reply.MapTaskNumber = mapTask.taskNumber
-		reply.NReduce = c.nReduce
-		reply.operationName = processmaptask
-		reply.FileName = mapTask.files[len(mapTask.files)-1] // get the last element
-		mapTask.files = mapTask.files[:len(mapTask.files)-1] // remove it from the list
+		response.MapTaskNumber = mapTask.taskNumber
+		response.NReduce = c.nReduce
+		response.OperationName = processmaptask
+		response.FileName = pop(&mapTask.files) // pop the last file
+		fmt.Printf("Files is %v", mapTask.files)
 		mapTask.taskNumber++
 		return nil
 	} else {
-		if mapTask.finished {
-			reply.operationName = exit
+		// just because there aren't any more files left to assign doesn't mean all tasks are done.
+		if mapTask.done {
+
+			response.OperationName = exit
 		} else {
-			reply.operationName = wait
+			response.OperationName = wait
+			response.MapTaskNumber = 9999
 		}
 	}
 	return nil
 }
 
-func (c *Coordinator) FinishedMapTask(args *FinishedMapRequest, reply *EmptyResponse) error {
-	fmt.Printf("task %v files %v\n", args.MapTaskNumber, args.FileNameList)
+func (c *Coordinator) FinishedMapTask(request *FinishedMapRequest, reply *EmptyResponse) error {
+	fmt.Printf("task %v finished processing file %v. length of doneFiles is %v\n", request.MapTaskNumber, request.FileName, len(c.mapTask.doneFiles))
 	// add fileName to finished_files_set
-	// if len(finished_files_set) == totalFiles, set finished to true
+	// if len(finished_files_set) == totalFiles, set finished to true.
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	mapTask := &c.mapTask
+	mapTask.doneFiles[request.FileName] = true
+	if len(mapTask.doneFiles) == mapTask.totalFiles {
+		fmt.Printf("Setting map task done!")
+		mapTask.done = true
+	}
 	return nil
 }
 
@@ -93,7 +112,11 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	mapTask := MapTask{files: files}
+	mapTask := MapTask{
+		files:      files,
+		totalFiles: len(files),
+		doneFiles:  make(map[string]bool),
+	}
 	c := Coordinator{nReduce: nReduce, mapTask: mapTask}
 	c.server()
 	return &c
