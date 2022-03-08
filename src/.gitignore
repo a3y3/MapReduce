@@ -12,3 +12,4 @@ mrtmp.*
 /main/mrworker
 blank-*
 mr-out-0
+mapoutput-*
