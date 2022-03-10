@@ -21,7 +21,6 @@ type Coordinator struct {
 
 type MapPhase struct {
 	files      []string
-	taskNumber int
 	done       bool
 	totalFiles int
 	doneFiles  map[string]bool
@@ -45,11 +44,11 @@ func (c *Coordinator) GetMapTask(request *EmptyRequest, response *MapTaskRespons
 
 	mapPhase := &c.mapPhase
 	if len(mapPhase.files) > 0 {
-		response.MapTaskNumber = mapPhase.taskNumber
 		response.NReduce = c.nReduce
 		response.OperationName = processtask
 		response.FileName = pop(&mapPhase.files) // pop the last file
-		mapPhase.taskNumber++
+		response.MapTaskNumber = ihash(response.FileName)
+
 		return nil
 	} else {
 		// just because there aren't any more files left to assign doesn't mean all tasks are done.
@@ -107,8 +106,9 @@ func (c *Coordinator) server() {
 //
 func (c *Coordinator) Done() bool {
 	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
 	retval := c.done
-	c.mutex.Unlock()
 	return retval
 }
 
