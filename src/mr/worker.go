@@ -35,12 +35,12 @@ func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	mapTaskDone := false
-	for mapTaskDone != true {
+	for !mapTaskDone {
 		mapTaskResponse := callGetMapTask()
 		operation := mapTaskResponse.OperationName
 
 		switch operation {
-		case processmaptask:
+		case processtask:
 			handleMapTask(mapTaskResponse, mapf)
 		case wait:
 			time.Sleep(time.Second)
@@ -50,15 +50,15 @@ func Worker(mapf func(string, string) []KeyValue,
 		}
 	}
 	// reduce loop starts here
+	fmt.Println("finished map task!")
 }
 
 func handleMapTask(mapTaskResponse MapTaskResponse, mapf func(string, string) []KeyValue) {
 	fileName := mapTaskResponse.FileName
-	fmt.Printf("got file %v\n", fileName)
+	fmt.Printf("processing file %v\n", fileName)
 
 	content := getFileContent(fileName)
 	kva := mapf(fileName, content)
-	fmt.Printf("kva: %v", kva)
 	writeIntermediate(kva, mapTaskResponse)
 	callFinishedMap(mapTaskResponse)
 }

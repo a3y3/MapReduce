@@ -7,17 +7,19 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 )
 
 type Coordinator struct {
-	done    bool
-	mutex   sync.Mutex
-	mapTask MapTask
-	nReduce int
+	done     bool
+	mutex    sync.Mutex
+	nReduce  int
+	mapPhase MapPhase
 }
 
-type MapTask struct {
+type MapPhase struct {
 	files      []string
 	taskNumber int
 	done       bool
@@ -37,44 +39,48 @@ func pop(arr *[]string) string {
 	return val
 }
 
-func (c *Coordinator) GetMapTask(args *EmptyRequest, response *MapTaskResponse) error {
+func (c *Coordinator) GetMapTask(request *EmptyRequest, response *MapTaskResponse) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	mapTask := &c.mapTask
-	if len(mapTask.files) > 0 {
-		response.MapTaskNumber = mapTask.taskNumber
+	mapPhase := &c.mapPhase
+	if len(mapPhase.files) > 0 {
+		response.MapTaskNumber = mapPhase.taskNumber
 		response.NReduce = c.nReduce
-		response.OperationName = processmaptask
-		response.FileName = pop(&mapTask.files) // pop the last file
-		fmt.Printf("Files is %v", mapTask.files)
-		mapTask.taskNumber++
+		response.OperationName = processtask
+		response.FileName = pop(&mapPhase.files) // pop the last file
+		mapPhase.taskNumber++
 		return nil
 	} else {
 		// just because there aren't any more files left to assign doesn't mean all tasks are done.
-		if mapTask.done {
-
+		if mapPhase.done {
 			response.OperationName = exit
 		} else {
 			response.OperationName = wait
-			response.MapTaskNumber = 9999
 		}
 	}
 	return nil
 }
 
 func (c *Coordinator) FinishedMapTask(request *FinishedMapRequest, reply *EmptyResponse) error {
-	fmt.Printf("task %v finished processing file %v. length of doneFiles is %v\n", request.MapTaskNumber, request.FileName, len(c.mapTask.doneFiles))
 	// add fileName to finished_files_set
 	// if len(finished_files_set) == totalFiles, set finished to true.
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	mapTask := &c.mapTask
-	mapTask.doneFiles[request.FileName] = true
-	if len(mapTask.doneFiles) == mapTask.totalFiles {
-		fmt.Printf("Setting map task done!")
-		mapTask.done = true
+	mapPhase := &c.mapPhase
+	mapPhase.doneFiles[request.FileName] = true
+	for _, fileName := range request.FileNameList {
+		split := strings.Split(fileName, "-")
+		reduceTaskNumber, err := strconv.ParseInt(split[len(split)-1], 10, 32)
+		if err != nil {
+			log.Fatalf("Couldn't get reduceTaskNumber from fileName %v", fileName)
+		}
+		reduceTaskNumber += 1
+	}
+	if len(mapPhase.doneFiles) == mapPhase.totalFiles {
+		fmt.Printf("Setting map task to done!")
+		mapPhase.done = true
 	}
 	return nil
 }
@@ -112,12 +118,15 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	mapTask := MapTask{
+	mapPhase := MapPhase{
 		files:      files,
 		totalFiles: len(files),
 		doneFiles:  make(map[string]bool),
 	}
-	c := Coordinator{nReduce: nReduce, mapTask: mapTask}
+	c := Coordinator{
+		nReduce:  nReduce,
+		mapPhase: mapPhase,
+	}
 	c.server()
 	return &c
 }
