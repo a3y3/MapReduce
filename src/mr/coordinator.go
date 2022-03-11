@@ -13,17 +13,18 @@ import (
 )
 
 type Coordinator struct {
-	done     bool
-	mutex    sync.Mutex
-	nReduce  int
-	mapPhase MapPhase
+	done        bool
+	mutex       sync.Mutex
+	nReduce     int
+	mapPhase    MapPhase
+	reducePhase ReducePhase
 }
 
 type MapPhase struct {
-	done       bool
-	totalFiles int
-	mapTasks   []MapTask
-	doneTasks  map[int]bool // taskNumber -> finished
+	done         bool
+	totalFiles   int
+	mapTasks     []MapTask
+	doneMapTasks map[int]bool // taskNumber -> finished
 }
 
 type MapTask struct {
@@ -31,7 +32,16 @@ type MapTask struct {
 	number   int
 }
 
-type ReduceTask struct{}
+type ReducePhase struct {
+	done            bool
+	reduceTasks     []ReduceTask
+	doneReduceTasks map[int]bool
+}
+
+type ReduceTask struct {
+	fileNames []string
+	number    int
+}
 
 // can't wait for generics support -.-
 func pop_v0(arr *[]MapTask) MapTask {
@@ -41,11 +51,11 @@ func pop_v0(arr *[]MapTask) MapTask {
 }
 
 // can't wait for generics support -.-
-// func pop_v1(arr *[]ReduceTask) ReduceTask {
-// 	val := (*arr)[len(*arr)-1]
-// 	*arr = (*arr)[:len(*arr)-1]
-// 	return val
-// }
+func pop_v1(arr *[]ReduceTask) ReduceTask {
+	val := (*arr)[len(*arr)-1]
+	*arr = (*arr)[:len(*arr)-1]
+	return val
+}
 
 func (c *Coordinator) GetMapTask(request *EmptyRequest, response *MapTaskResponse) error {
 	c.mutex.Lock()
@@ -78,18 +88,59 @@ func (c *Coordinator) FinishedMapTask(request *FinishedMapRequest, reply *EmptyR
 	defer c.mutex.Unlock()
 
 	mapPhase := &c.mapPhase
-	mapPhase.doneTasks[request.MapTaskNumber] = true
+	mapPhase.doneMapTasks[request.MapTaskNumber] = true
 	for _, fileName := range request.FileNameList {
 		split := strings.Split(fileName, "-")
 		reduceTaskNumber, err := strconv.ParseInt(split[len(split)-1], 10, 32)
 		if err != nil {
 			log.Fatalf("Couldn't get reduceTaskNumber from fileName %v", fileName)
 		}
-		reduceTaskNumber += 1 //todo temp, remove later
+
+		reducePhase := &c.reducePhase
+		reduceTask := &reducePhase.reduceTasks[reduceTaskNumber]
+		(*reduceTask).fileNames = append((*reduceTask).fileNames, fileName)
+		(*reduceTask).number = int(reduceTaskNumber)
 	}
-	if len(mapPhase.doneTasks) == mapPhase.totalFiles {
-		fmt.Printf("Setting map task to done!")
+	fmt.Printf("Finished task number %v\n", request.MapTaskNumber)
+	if len(mapPhase.doneMapTasks) == mapPhase.totalFiles {
+		fmt.Printf("Finished all map tasks!\n")
 		mapPhase.done = true
+	}
+	return nil
+}
+
+func (c *Coordinator) GetReduceTask(request *EmptyRequest, response *ReduceTaskResponse) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	reducePhase := &c.reducePhase
+	if len(reducePhase.reduceTasks) > 0 {
+		reduceTask := pop_v1(&reducePhase.reduceTasks)
+		response.OperationName = processtask
+		response.FileList = reduceTask.fileNames
+		response.ReduceTaskNumber = reduceTask.number
+		return nil
+	} else {
+		if reducePhase.done {
+			response.OperationName = exit
+			c.done = true
+		} else {
+			response.OperationName = wait
+		}
+	}
+	return nil
+}
+
+func (c *Coordinator) FinishedReduceTask(request *FinishedReduceRequest, reply *EmptyResponse) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	reducePhase := &c.reducePhase
+	reducePhase.doneReduceTasks[request.ReduceTaskNumber] = true
+	fmt.Printf("Reduce output: %v\n", request.FileName)
+	if len(reducePhase.doneReduceTasks) == c.nReduce {
+		fmt.Printf("Finished all reduce tasks!\n")
+		reducePhase.done = true
 	}
 	return nil
 }
@@ -137,13 +188,23 @@ func MakeCoordinator(fileNames []string, nReduce int) *Coordinator {
 		mapTasks = append(mapTasks, mapTask)
 	}
 	mapPhase := MapPhase{
-		totalFiles: len(fileNames),
-		mapTasks:   mapTasks,
-		doneTasks:  make(map[int]bool),
+		totalFiles:   len(fileNames),
+		mapTasks:     mapTasks,
+		doneMapTasks: make(map[int]bool),
+	}
+
+	reduceTasks := []ReduceTask{}
+	for i := 0; i < nReduce; i++ {
+		reduceTasks = append(reduceTasks, ReduceTask{})
+	}
+	reducePhase := ReducePhase{
+		reduceTasks:     reduceTasks,
+		doneReduceTasks: make(map[int]bool),
 	}
 	c := Coordinator{
-		nReduce:  nReduce,
-		mapPhase: mapPhase,
+		nReduce:     nReduce,
+		mapPhase:    mapPhase,
+		reducePhase: reducePhase,
 	}
 	c.server()
 	return &c

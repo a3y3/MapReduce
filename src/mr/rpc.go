@@ -35,6 +35,11 @@ type FinishedMapRequest struct {
 	FileName      string // the fileName that the map task finished processing
 }
 
+type FinishedReduceRequest struct {
+	FileName         string
+	ReduceTaskNumber int
+}
+
 // ===== Other type definitions =====
 type Operation int64
 

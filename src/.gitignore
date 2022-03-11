@@ -11,5 +11,5 @@ mrtmp.*
 /main/mrsequential
 /main/mrworker
 blank-*
-mr-out-0
+mr-out-*
 mapoutput-*
