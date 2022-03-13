@@ -110,7 +110,6 @@ func handleReduceTask(reduceTaskResponse ReduceTaskResponse, reducef func(string
 		}
 		output := reducef(intermediate[i].Key, values)
 
-		// this is the correct format for each line of Reduce output.
 		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
 
 		i = j
@@ -185,6 +184,10 @@ func writeIntermediate(kva []KeyValue, mapTaskResponse MapTaskResponse) {
 	mapTaskNumber := mapTaskResponse.MapTaskNumber
 	var files []*os.File
 	for i := 0; i < nReduce; i++ {
+		err := os.MkdirAll("output", os.ModePerm)
+		if err != nil {
+			log.Fatalf("mkdirAll failed")
+		}
 		f, err := os.OpenFile(fmt.Sprintf("output/tmp-mapoutput-%v-%v", mapTaskNumber, i), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatal(err)

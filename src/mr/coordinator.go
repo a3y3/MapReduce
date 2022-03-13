@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Coordinator struct {
@@ -57,6 +58,17 @@ func pop_v1(arr *[]ReduceTask) ReduceTask {
 	return val
 }
 
+func (c *Coordinator) addMapTaskBackToList(mapTask MapTask, mapTasks *[]MapTask, delay time.Duration) {
+	time.Sleep(delay)
+	c.mutex.Lock()
+	mapPhase := c.mapPhase
+	if !mapPhase.doneMapTasks[mapTask.number] {
+		// task didn't finish in 10 seconds
+		*mapTasks = append(*mapTasks, mapTask)
+	}
+	c.mutex.Unlock()
+}
+
 func (c *Coordinator) GetMapTask(request *EmptyRequest, response *MapTaskResponse) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -69,6 +81,8 @@ func (c *Coordinator) GetMapTask(request *EmptyRequest, response *MapTaskRespons
 		response.FileName = mapTask.fileName
 		response.MapTaskNumber = mapTask.number
 
+		//give this task 10 sesconds to complete
+		go c.addMapTaskBackToList(mapTask, &mapPhase.mapTasks, time.Second*10)
 		return nil
 	} else {
 		// just because there aren't any more files left to assign doesn't mean all tasks are done.
@@ -109,6 +123,17 @@ func (c *Coordinator) FinishedMapTask(request *FinishedMapRequest, reply *EmptyR
 	return nil
 }
 
+func (c *Coordinator) addReduceTaskBackToList(reduceTask ReduceTask, reduceTasks *[]ReduceTask, delay time.Duration) {
+	time.Sleep(delay)
+	c.mutex.Lock()
+	reducePhase := c.reducePhase
+	if !reducePhase.doneReduceTasks[reduceTask.number] {
+		// task didn't finish in 10 seconds
+		*reduceTasks = append(*reduceTasks, reduceTask)
+	}
+	c.mutex.Unlock()
+}
+
 func (c *Coordinator) GetReduceTask(request *EmptyRequest, response *ReduceTaskResponse) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -119,6 +144,8 @@ func (c *Coordinator) GetReduceTask(request *EmptyRequest, response *ReduceTaskR
 		response.OperationName = processtask
 		response.FileList = reduceTask.fileNames
 		response.ReduceTaskNumber = reduceTask.number
+		//give this task 10 sesconds to complete
+		go c.addReduceTaskBackToList(reduceTask, &reducePhase.reduceTasks, time.Second*10)
 		return nil
 	} else {
 		if reducePhase.done {
