@@ -39,7 +39,8 @@ func ihash(key string) int {
 }
 
 //
-// main/mrworker.go calls this function.
+// Worker is called by main/mrworker.go.
+// Has 2 loops, one for map and one for reduce.
 //
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
@@ -76,6 +77,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	}
 }
 
+// handleMapTask gets the file content, calls the map function on it, and writes the output to intermediate "mapoutput" files.
 func handleMapTask(mapTaskResponse MapTaskResponse, mapf func(string, string) []KeyValue) {
 	fileName := mapTaskResponse.FileName
 	fmt.Printf("processing file %v\n", fileName)
@@ -86,6 +88,7 @@ func handleMapTask(mapTaskResponse MapTaskResponse, mapf func(string, string) []
 	callFinishedMap(mapTaskResponse)
 }
 
+// see method `handleMapTask`.
 func handleReduceTask(reduceTaskResponse ReduceTaskResponse, reducef func(string, []string) string) {
 	fmt.Printf("processing reduce task number %v\n", reduceTaskResponse.ReduceTaskNumber)
 	intermediate := []KeyValue{}
@@ -117,9 +120,10 @@ func handleReduceTask(reduceTaskResponse ReduceTaskResponse, reducef func(string
 
 	ofile.Close()
 	callFinishedReduce(reduceTaskResponse, oname)
-
 }
 
+// getKVAFromFile opens file `fileName`, reads all content and outputs an array of `KeyValue` pairs.
+// Used by the reduce Task to read all the output from the intermediate map task files.
 func getKVAFromFile(fileName string) []KeyValue {
 	file, err := os.Open(fileName)
 	kva := []KeyValue{}
@@ -144,6 +148,7 @@ func getKVAFromFile(fileName string) []KeyValue {
 	return kva
 }
 
+// callFinishedMap signals to the coordinator that this map task is finished successfully.
 func callFinishedMap(mapTaskResponse MapTaskResponse) {
 	mapTaskNumber, nReduce := mapTaskResponse.MapTaskNumber, mapTaskResponse.NReduce
 	fileName := mapTaskResponse.FileName
@@ -165,6 +170,7 @@ func callFinishedMap(mapTaskResponse MapTaskResponse) {
 	}
 }
 
+// see method call FinishedMap
 func callFinishedReduce(reduceTaskResponse ReduceTaskResponse, fileName string) {
 	reduceTaskNumber := reduceTaskResponse.ReduceTaskNumber
 	request := FinishedReduceRequest{
@@ -179,6 +185,7 @@ func callFinishedReduce(reduceTaskResponse ReduceTaskResponse, fileName string) 
 	}
 }
 
+// writeIntermediate writes the intermediate output of a maptask to temporary files. Note that the intermediate files are first written to a temp file, then renamed in an atomic operation to prevent having incomplete output files.
 func writeIntermediate(kva []KeyValue, mapTaskResponse MapTaskResponse) {
 	nReduce := mapTaskResponse.NReduce
 	mapTaskNumber := mapTaskResponse.MapTaskNumber
@@ -210,6 +217,7 @@ func writeIntermediate(kva []KeyValue, mapTaskResponse MapTaskResponse) {
 	}
 }
 
+// getFileContent reads file `fileName` and returns the contents as a string.
 func getFileContent(fileName string) string {
 	file, err := os.Open(fileName)
 	if err != nil {
@@ -223,6 +231,7 @@ func getFileContent(fileName string) string {
 	return string(content)
 }
 
+// callGetMapTask calls the coordinator asking for a map task.
 func callGetMapTask() MapTaskResponse {
 	request := EmptyRequest{}
 	response := MapTaskResponse{}
@@ -235,6 +244,7 @@ func callGetMapTask() MapTaskResponse {
 	return response
 }
 
+// see method `CallGetMapTask`.
 func callGetReduceTask() ReduceTaskResponse {
 	request := EmptyRequest{}
 	response := ReduceTaskResponse{}

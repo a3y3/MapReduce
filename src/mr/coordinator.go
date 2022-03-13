@@ -58,6 +58,9 @@ func pop_v1(arr *[]ReduceTask) ReduceTask {
 	return val
 }
 
+// addMapTaskBackToList adds a map task to the map phase's "todo" list.
+// The function waits for `delay` amount of time before adding the task.
+// If the function finds that the task was already marked completed, it skips it.
 func (c *Coordinator) addMapTaskBackToList(mapTask MapTask, mapTasks *[]MapTask, delay time.Duration) {
 	time.Sleep(delay)
 	c.mutex.Lock()
@@ -69,6 +72,11 @@ func (c *Coordinator) addMapTaskBackToList(mapTask MapTask, mapTasks *[]MapTask,
 	c.mutex.Unlock()
 }
 
+// GetMapTask is a gRPC method called by a worker to ask for a map task from the coordinator.
+// This function simply pops one task off a "todo" list and assigns an operation to the worker as a reply. The operation can be of the following types:
+// 		- processtask: Tells the worker to process the map task. Additional map task details are supplied with the reply.
+// 		- exit: Tells the worker to exit the map task loop
+// 		- wait: Tells the worker that there isn't any work to be assigned yet (but could be in the future)
 func (c *Coordinator) GetMapTask(request *EmptyRequest, response *MapTaskResponse) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -95,6 +103,10 @@ func (c *Coordinator) GetMapTask(request *EmptyRequest, response *MapTaskRespons
 	return nil
 }
 
+// FinishedMapTask is a gRPC method called by the worker to signal to the coordinator that a map task is succesfully completed.
+// This function does two things:
+// 		- Marks the mapTask as done using a hashmap
+// 		- Groups all reduce tasks with the same number together. This is also called 'Shuffle and sort' in the paper.
 func (c *Coordinator) FinishedMapTask(request *FinishedMapRequest, reply *EmptyResponse) error {
 	// add fileName to finished_files_set
 	// if len(finished_files_set) == totalFiles, set finished to true.
@@ -123,6 +135,7 @@ func (c *Coordinator) FinishedMapTask(request *FinishedMapRequest, reply *EmptyR
 	return nil
 }
 
+// see method `addMapTaskBackToList`.
 func (c *Coordinator) addReduceTaskBackToList(reduceTask ReduceTask, reduceTasks *[]ReduceTask, delay time.Duration) {
 	time.Sleep(delay)
 	c.mutex.Lock()
@@ -134,6 +147,7 @@ func (c *Coordinator) addReduceTaskBackToList(reduceTask ReduceTask, reduceTasks
 	c.mutex.Unlock()
 }
 
+// see method `GetMapTask`
 func (c *Coordinator) GetReduceTask(request *EmptyRequest, response *ReduceTaskResponse) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -158,6 +172,7 @@ func (c *Coordinator) GetReduceTask(request *EmptyRequest, response *ReduceTaskR
 	return nil
 }
 
+// see method `FinishedMapTask`
 func (c *Coordinator) FinishedReduceTask(request *FinishedReduceRequest, reply *EmptyResponse) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()

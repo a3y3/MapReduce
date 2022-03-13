@@ -16,8 +16,8 @@ import (
 type MapTaskResponse struct {
 	OperationName Operation
 	FileName      string // the file to process
-	MapTaskNumber int    // guarantees that if 2 workers have the same map task, their intermediate files have different names
-	NReduce       int    //total number of reduce tasks, used by map tasks to calculate hash(key) % n
+	MapTaskNumber int
+	NReduce       int //total number of reduce tasks, used by map tasks to calculate hash(key) % n
 }
 type ReduceTaskResponse struct {
 	OperationName    Operation
